@@ -5,6 +5,7 @@ import copy
 
 from PySide6 import QtWidgets, QtGui
 from PySide6 import QtCore
+from PySide6.QtCore import Qt
 
 from app.ui.core.main_window import Ui_MainWindow
 import app.ui.widgets.actions.common_actions as common_widget_actions
@@ -18,6 +19,31 @@ from app.ui.widgets.actions import graphics_view_actions
 
 from app.processors.video_processor import VideoProcessor
 from app.processors.models_processor import ModelsProcessor
+
+# Handle problematic screen_capture import with error handling
+try:
+    from app.processors.screen_capture import ScreenCaptureProcessor
+    SCREEN_CAPTURE_AVAILABLE = True
+except (ImportError, SyntaxError) as e:
+    print(f"Warning: Could not import ScreenCaptureProcessor: {e}")
+    # Create a dummy class as fallback
+    class ScreenCaptureProcessor:
+        def __init__(self, main_window):
+            self.main_window = main_window
+            print("Warning: Using dummy ScreenCaptureProcessor due to import error")
+        
+        def show_region_selector(self):
+            print("Screen capture functionality not available due to import error")
+            # Show message to user
+            if hasattr(self.main_window, 'display_messagebox_signal'):
+                self.main_window.display_messagebox_signal.emit(
+                    "Screen Capture Error", 
+                    "Screen capture functionality is not available due to a module error. Please check the screen_capture.py file.",
+                    self.main_window
+                )
+    
+    SCREEN_CAPTURE_AVAILABLE = False
+
 from app.ui.widgets import widget_components
 from app.ui.widgets.event_filters import GraphicsViewEventFilter, VideoSeekSliderEventFilter, videoSeekSliderLineEditEventFilter, ListWidgetEventFilter
 from app.ui.widgets import ui_workers
@@ -41,9 +67,10 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.input_faces_loader_worker: ui_workers.InputFacesLoaderWorker|bool = False
         self.target_videos_filter_worker = ui_workers.FilterWorker(main_window=self, search_text='', filter_list='target_videos')
         self.input_faces_filter_worker = ui_workers.FilterWorker(main_window=self, search_text='', filter_list='input_faces')
-        self.merged_embeddings_filter_worker = ui_workers.FilterWorker(main_window=self, search_text='', filter_list='merged_embeddings')
+        self.merged_embeddings_filter_worker = ui_workers.FilterWorker(main_window=self, search_text='', filter_list='merged_embeddings')        
         self.video_processor = VideoProcessor(self)
         self.models_processor = ModelsProcessor(self)
+        self.screen_capture_processor = ScreenCaptureProcessor(self)
         self.target_videos: Dict[int, widget_components.TargetMediaCardButton] = {} #Contains button objects of target videos (Set as list instead of single video to support batch processing in future)
         self.target_faces: Dict[int, widget_components.TargetFaceCardButton] = {} #Contains button objects of target faces
         self.input_faces: Dict[int, widget_components.InputFaceCardButton] = {} #Contains button objects of source faces (images)
@@ -114,11 +141,13 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.targetVideosList.installEventFilter(list_widget_event_filter)
         self.targetVideosList.viewport().installEventFilter(list_widget_event_filter)
         self.inputFacesList.installEventFilter(list_widget_event_filter)
-        self.inputFacesList.viewport().installEventFilter(list_widget_event_filter)
-
-        # Set up folder open buttons for Target and Input
+        self.inputFacesList.viewport().installEventFilter(list_widget_event_filter)        # Set up folder open buttons for Target and Input
         self.buttonTargetVideosPath.clicked.connect(partial(list_view_actions.select_target_medias, self, 'folder'))
         self.buttonInputFacesPath.clicked.connect(partial(list_view_actions.select_input_face_images, self, 'folder'))
+        
+        # Add screen capture button functionality
+        # We'll create a screen capture button programmatically
+        self.setup_screen_capture_button()
 
         # Initialize graphics frame to view frames
         self.scene = QtWidgets.QGraphicsScene()
@@ -271,3 +300,186 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
     def save_last_workspace(self):
         pass
+
+    def setup_screen_capture_button(self):
+        """Set up screen capture button functionality."""
+        # Create a screen capture button as a full-width button
+        self.buttonScreenCapture = QtWidgets.QPushButton()
+        self.buttonScreenCapture.setObjectName("buttonScreenCapture")
+        self.buttonScreenCapture.setToolTip("Start Screen Capture - Select a region of your screen to capture")
+        self.buttonScreenCapture.setText("📺 Start Screen Capture")
+        
+        # Use expanding size policy to make it full width
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.buttonScreenCapture.sizePolicy().hasHeightForWidth())
+        self.buttonScreenCapture.setSizePolicy(sizePolicy)
+        
+        # Set a minimum height to make it more prominent
+        self.buttonScreenCapture.setMinimumHeight(32)
+        
+        # Use the fullscreen icon alongside the text
+        screen_capture_icon = QtGui.QIcon()
+        screen_capture_icon.addFile(":/media/media/fullscreen.png", QtCore.QSize(), QtGui.QIcon.Mode.Normal, QtGui.QIcon.State.Off)
+        self.buttonScreenCapture.setIcon(screen_capture_icon)
+        self.buttonScreenCapture.setIconSize(QtCore.QSize(16, 16))        # Add the button to the Target Videos group box layout
+        # Get the group box and its layout
+        if hasattr(self, 'groupBox_TargetVideos_Select'):
+            layout = self.groupBox_TargetVideos_Select.layout()
+            if layout:
+                # Add the button as a new row in the grid layout
+                layout.addWidget(self.buttonScreenCapture, layout.rowCount(), 0, 1, 2)  # Span 2 columns
+                print("DEBUG: Screen capture button added to Target Videos group")
+        
+        # Connect the button to show the screen region selector
+        self.buttonScreenCapture.clicked.connect(self.show_screen_capture_selector)
+        
+        # Add video overlay button
+        self.setup_video_overlay_button()
+    
+    def setup_video_overlay_button(self):
+        """Set up video overlay button functionality."""
+        # Create a video overlay toggle button
+        self.buttonVideoOverlay = QtWidgets.QPushButton()
+        self.buttonVideoOverlay.setObjectName("buttonVideoOverlay")
+        self.buttonVideoOverlay.setToolTip("Toggle Video Overlay - Show processed video above screen capture region")
+        self.buttonVideoOverlay.setText("🔳 Video Overlay")
+        self.buttonVideoOverlay.setCheckable(True)
+        self.buttonVideoOverlay.setChecked(False)
+        
+        # Use expanding size policy to make it full width
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.buttonVideoOverlay.sizePolicy().hasHeightForWidth())
+        self.buttonVideoOverlay.setSizePolicy(sizePolicy)
+        
+        # Set a minimum height to make it more prominent
+        self.buttonVideoOverlay.setMinimumHeight(32)
+        
+        # Initially disabled until screen capture is active
+        self.buttonVideoOverlay.setEnabled(False)
+        
+        # Add the button to the Target Videos group box layout
+        if hasattr(self, 'groupBox_TargetVideos_Select'):
+            layout = self.groupBox_TargetVideos_Select.layout()
+            if layout:
+                # Add the button as a new row in the grid layout
+                layout.addWidget(self.buttonVideoOverlay, layout.rowCount(), 0, 1, 2)  # Span 2 columns
+                print("DEBUG: Video overlay button added to Target Videos group")
+        
+        # Connect the button to toggle overlay
+        self.buttonVideoOverlay.clicked.connect(self.toggle_video_overlay)
+        # Initialize overlay window variable
+        self.video_overlay_window = None
+        
+    def toggle_video_overlay(self):
+        """Toggle the video overlay window."""
+        try:
+            print("DEBUG: Video overlay button clicked!")
+            
+            if self.buttonVideoOverlay.isChecked():
+                # Show overlay
+                print("DEBUG: Creating/showing video overlay...")
+                
+                # Get current screen capture region if available
+                region = None
+                if (hasattr(self, 'screen_capture_processor') and 
+                    hasattr(self.screen_capture_processor, 'current_region') and
+                    self.screen_capture_processor.current_region):
+                    region = self.screen_capture_processor.current_region
+                    print(f"DEBUG: Using screen capture region: {region}")
+                else:
+                    # Default region if no screen capture region is set
+                    region = {'x': 100, 'y': 100, 'width': 640, 'height': 480}
+                    print(f"DEBUG: Using default region: {region}")
+                # Create overlay window if it doesn't exist
+                if self.video_overlay_window is None:                      
+                    from app.processors.screen_capture import VideoOverlayWindow
+                    print("DEBUG: Creating new VideoOverlayWindow")
+                    self.video_overlay_window = VideoOverlayWindow(None, region)  # No parent
+                    
+                    # Force immediate exclusion application after creation
+                    print("DEBUG: Ensuring overlay is excluded from screen capture from start...")
+                    from PySide6.QtWidgets import QApplication
+                    QApplication.processEvents()  # Process pending events
+                    self.video_overlay_window.exclude_from_screen_capture()
+                        
+                else:
+                    # Update existing overlay region
+                    print("DEBUG: Updating existing VideoOverlayWindow region")
+                    if region:
+                        self.video_overlay_window.set_region(
+                            region['x'], region['y'], 
+                            region['width'], region['height']
+                        )
+                # Show the overlay window with aggressive visibility forcing
+                print("DEBUG: Showing overlay window...")
+                
+                # Force the window to be visible
+                self.video_overlay_window.show()
+                self.video_overlay_window.setVisible(True)
+                self.video_overlay_window.raise_()
+                self.video_overlay_window.activateWindow()
+                self.video_overlay_window.setFocus()
+                
+                # Force it to front
+                self.video_overlay_window.setWindowState(
+                    self.video_overlay_window.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
+                )
+                
+                print(f"DEBUG: Overlay window visible: {self.video_overlay_window.isVisible()}")
+                print(f"DEBUG: Overlay window geometry: {self.video_overlay_window.geometry()}")
+                
+                # Update button text
+                self.buttonVideoOverlay.setText("🔲 Hide Overlay")
+                print("DEBUG: Video overlay shown successfully")
+            else:
+                # Hide overlay
+                print("DEBUG: Hiding video overlay...")
+                if self.video_overlay_window:
+                    # Properly hide and reset the window state
+                    self.video_overlay_window.hide()
+                    self.video_overlay_window.setVisible(False)
+                    
+                    # Reset window state for next show
+                    self.video_overlay_window.clearFocus()
+                    
+                    print("DEBUG: Video overlay hidden and state reset")
+                
+                # Update button text
+                self.buttonVideoOverlay.setText("🔳 Video Overlay")
+                print("DEBUG: Video overlay hidden")
+                
+        except Exception as e:
+            print(f"ERROR in toggle_video_overlay: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def update_video_overlay(self, frame):
+        """Update the video overlay with a new frame."""
+        try:
+            if (self.video_overlay_window and 
+                self.video_overlay_window.isVisible() and 
+                frame is not None):
+                print(f"DEBUG: Updating overlay with frame: {frame.shape}")
+                self.video_overlay_window.show_frame(frame)
+        except Exception as e:
+            print(f"ERROR updating video overlay: {e}")
+    
+    def show_screen_capture_selector(self):
+        """Show the screen capture region selector."""
+        try:
+            print("DEBUG: Screen capture button clicked!")
+            print(f"DEBUG: screen_capture_processor exists: {hasattr(self, 'screen_capture_processor')}")
+            if hasattr(self, 'screen_capture_processor'):
+                print(f"DEBUG: screen_capture_processor type: {type(self.screen_capture_processor)}")
+                self.screen_capture_processor.show_region_selector()
+                print("DEBUG: show_region_selector() called successfully")
+            else:
+                print("ERROR: screen_capture_processor not found!")
+        except Exception as e:
+            print(f"ERROR in show_screen_capture_selector: {e}")
+            import traceback
+            traceback.print_exc()

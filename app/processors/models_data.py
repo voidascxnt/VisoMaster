@@ -49,6 +49,8 @@ arcface_mapping_model_dict = {
     'GhostFace-v2': 'GhostArcFace',
     'GhostFace-v3': 'GhostArcFace',
     'CSCS': 'CSCSArcFace',
+    'ReSwapper128': 'Inswapper128ArcFace',
+    'ReSwapper256': 'Inswapper128ArcFace',
 }
 
 detection_model_mapping = {
@@ -126,12 +128,24 @@ models_list = [
         "hash": "f471d4f322903da2bca360aa0d7ab9922e3b0001d683f825ca6b15d865382935",
         "url": f"{assets_repo}/v0.1.0/ghost_unet_3_block.onnx"
 
-    },
-    {
+    },    {
         "model_name": "CSCS",
         "local_path": f"{models_dir}/cscs_256.onnx",
         "hash": "664f8f7cab655b825fe8cf57ab90bfbcbb0acf75eab8e7771c824f18bdb28b67",
         "url": f"{assets_repo}/v0.1.0/cscs_256.onnx"
+
+    },    {
+        "model_name": "ReSwapper128",
+        "local_path": f"{models_dir}/reswapper-1019500.onnx",
+        "hash": "744eaa30a6a3bdeb693c3c127b2c9ce6f2ea763f245b92ea71ea98b3a38b0fec",
+        "url": "https://huggingface.co/somanchiu/reswapper/resolve/main/reswapper-1019500.onnx"
+
+    },
+    {
+        "model_name": "ReSwapper256",
+        "local_path": f"{models_dir}/reswapper_256-1567500_originalInswapperClassCompatible.onnx",
+        "hash": "a87d3cbe281037133f1be765d14e164fe071e55fe2488887b789c39cc59cecd6",
+        "url": "https://huggingface.co/somanchiu/reswapper/resolve/main/reswapper_256-1567500_originalInswapperClassCompatible.onnx"
 
     },
     {

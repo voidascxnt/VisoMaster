@@ -410,6 +410,67 @@ def warp_face_by_face_landmark_5(img, kpss, image_size=112, mode='arcface112', i
 
     return img, M
 
+# ReSwapper-specific face alignment with offset correction
+def estimate_norm_reswapper(lmk, image_size=128, mode='arcface112'):
+    """
+    ReSwapper-specific face alignment with offset correction.
+    According to ReSwapper documentation: "Face alignment is handled incorrectly at resolutions 
+    other than 128. To resolve this issue, add an offset to "dst" in both x and y directions 
+    in the function "face_align.estimate_norm". The offset is approximately given by the formula:
+    Offset = (128/32768) * Resolution - 0.5"
+    """
+    assert lmk.shape == (5, 2)
+    tform = trans.SimilarityTransform()
+    lmk_tran = np.insert(lmk, 2, values=np.ones(5), axis=1)
+    min_M = []
+    min_index = []
+    min_error = float('inf')
+
+    if mode != 'arcfacemap':
+        if mode == 'arcface112':
+            src = float(image_size) / 112.0 * arcface_src
+        else:
+            factor = float(image_size) / 128.0
+            src = arcface_src * factor
+            src[:, 0] += (factor * 8.0)
+    else:
+        src = float(image_size) / 112.0 * src_map[112]
+    
+    # Apply ReSwapper offset correction for resolutions other than 128
+    if image_size != 128:
+        offset = (128.0 / 32768.0) * image_size - 0.5
+        print(f"DEBUG: Applying ReSwapper offset correction: {offset} for resolution {image_size}")
+        # Add offset to both x and y directions
+        src = src.copy()  # Make a copy to avoid modifying the original
+        src[:, :, 0] += offset  # x offset
+        src[:, :, 1] += offset  # y offset
+
+    for i in np.arange(src.shape[0]):
+        tform.estimate(lmk, src[i])
+        M = tform.params[0:2, :]
+        results = np.dot(M, lmk_tran.T)
+        results = results.T
+        error = np.sum(np.sqrt(np.sum((results - src[i])**2, axis=1)))
+        if error < min_error:
+            min_error = error
+            min_M = M
+            min_index = i
+    
+    return min_M, min_index
+
+def warp_face_by_face_landmark_5_reswapper(img, kpss, image_size=128, mode='arcface112', interpolation=v2.InterpolationMode.NEAREST):
+    """ReSwapper-specific face warping with corrected face alignment"""
+    # pad image by image size
+    img = pad_image_by_size(img, image_size)
+
+    M, pose_index = estimate_norm_reswapper(kpss, image_size, mode=mode)
+    t = trans.SimilarityTransform()
+    t.params[0:2] = M
+    img = v2.functional.affine(img, t.rotation*57.2958, (t.translation[0], t.translation[1]) , t.scale, 0, interpolation=interpolation, center = (0, 0) )
+    img = v2.functional.crop(img, 0,0, image_size, image_size)
+
+    return img, M
+
 def getRotationMatrix2D(center, output_size, scale, rotation, is_clockwise = True):
     scale_ratio = scale
     if not is_clockwise:

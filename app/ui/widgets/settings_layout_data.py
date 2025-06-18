@@ -286,9 +286,70 @@ SETTINGS_LAYOUT_DATA: LayoutDictTypes = {
         'InputFacesFolderRecursiveToggle':{
             'level': 1,
             'label': 'Input Faces Include Subfolders',
-            'default': False,
-            'help': 'Include all files from Subfolders when choosing Input Faces Folder'
+            'default': False,            'help': 'Include all files from Subfolders when choosing Input Faces Folder'
         }
+    },    'Screen Capture': {
+        'ScreenCaptureEnableToggle': {
+            'level': 1,
+            'label': 'Enable Screen Capture Settings',
+            'default': True,
+            'help': 'Enable or disable screen capture settings configuration.'
+        },
+        'ScreenCaptureXSlider': {
+            'level': 2,
+            'label': 'Capture X Position',
+            'min_value': '0',
+            'max_value': '7680',
+            'default': '0',
+            'step': 1,
+            'parentToggle': 'ScreenCaptureEnableToggle',
+            'requiredToggleValue': True,
+            'help': 'X coordinate of the screen capture region.'
+        },
+        'ScreenCaptureYSlider': {
+            'level': 2,
+            'label': 'Capture Y Position',
+            'min_value': '0',
+            'max_value': '4320',
+            'default': '0',
+            'step': 1,
+            'parentToggle': 'ScreenCaptureEnableToggle',
+            'requiredToggleValue': True,
+            'help': 'Y coordinate of the screen capture region.'
+        },
+        'ScreenCaptureWidthSlider': {
+            'level': 2,
+            'label': 'Capture Width',
+            'min_value': '320',
+            'max_value': '7680',
+            'default': '1280',
+            'step': 1,
+            'parentToggle': 'ScreenCaptureEnableToggle',
+            'requiredToggleValue': True,
+            'help': 'Width of the screen capture region.'
+        },
+        'ScreenCaptureHeightSlider': {
+            'level': 2,
+            'label': 'Capture Height',
+            'min_value': '240',
+            'max_value': '4320',
+            'default': '720',
+            'step': 1,
+            'parentToggle': 'ScreenCaptureEnableToggle',
+            'requiredToggleValue': True,
+            'help': 'Height of the screen capture region.'
+        },
+        'ScreenCaptureFPSSlider': {
+            'level': 2,
+            'label': 'Screen Capture FPS',
+            'min_value': '15',
+            'max_value': '60',
+            'default': '30',
+            'step': 15,
+            'parentToggle': 'ScreenCaptureEnableToggle',
+            'requiredToggleValue': True,
+            'help': 'Frames per second for screen capture.'
+        },
     }
 }
 

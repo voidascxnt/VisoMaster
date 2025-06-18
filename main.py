@@ -1,3 +1,20 @@
+#!/usr/bin/env python3
+import sys
+import os
+from pathlib import Path
+
+# Fix typing compatibility issue for PyTorch
+try:
+    from typing import Self
+except ImportError:
+    # For Python < 3.11, add Self to typing_extensions
+    try:
+        from typing_extensions import Self
+        import typing
+        typing.Self = Self
+    except ImportError:
+        pass
+
 from app.ui import main_ui
 from PySide6 import QtWidgets 
 import sys

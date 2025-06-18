@@ -322,9 +322,8 @@ def play_video(main_window: 'MainWindow', checked: bool):
 
 
 def record_video(main_window: 'MainWindow', checked: bool):
-    video_processor = main_window.video_processor
-    # Dont record webcam capture
-    if video_processor.file_type == 'webcam':
+    video_processor = main_window.video_processor    # Dont record webcam capture or screen capture
+    if video_processor.file_type == 'webcam' or video_processor.file_type == 'screen_capture':
         main_window.buttonMediaRecord.blockSignals(True)
         main_window.buttonMediaRecord.setChecked(not checked)
         main_window.buttonMediaRecord.blockSignals(False)

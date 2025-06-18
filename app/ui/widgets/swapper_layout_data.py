@@ -8,10 +8,9 @@ SWAPPER_LAYOUT_DATA: LayoutDictTypes = {
         'SwapModelSelection': {
             'level': 1,
             'label': 'Swapper Model',
-            'options': ['Inswapper128', 'InStyleSwapper256 Version A', 'InStyleSwapper256 Version B', 'InStyleSwapper256 Version C', 'DeepFaceLive (DFM)', 'SimSwap512', 'GhostFace-v1', 'GhostFace-v2', 'GhostFace-v3', 'CSCS'],            'default': 'Inswapper128',
+            'options': ['Inswapper128', 'InStyleSwapper256 Version A', 'InStyleSwapper256 Version B', 'InStyleSwapper256 Version C', 'DeepFaceLive (DFM)', 'SimSwap512', 'GhostFace-v1', 'GhostFace-v2', 'GhostFace-v3', 'CSCS', 'ReSwapper128', 'ReSwapper256'],            'default': 'Inswapper128',
             'help': 'Choose which swapper model to use for face swapping.'
-        },
-        'SwapperResSelection': {
+        },        'SwapperResSelection': {
             'level': 2,
             'label': 'Swapper Resolution',
             'options': ['128', '256', '384', '512'],
@@ -19,6 +18,23 @@ SWAPPER_LAYOUT_DATA: LayoutDictTypes = {
             'parentSelection': 'SwapModelSelection',
             'requiredSelectionValue': 'Inswapper128',
             'help': 'Select the resolution for the swapped face in pixels. Higher values offer better quality but are slower to process.'
+        },        'ReSwapper128ResSelection': {
+            'level': 2,
+            'label': 'ReSwapper Resolution',
+            'options': ['128', '256', '384', '512'],
+            'default': '128',
+            'parentSelection': 'SwapModelSelection',
+            'requiredSelectionValue': 'ReSwapper128',
+            'help': 'ReSwapper128 processes at native 128x128 resolution with consistent bicubic upscaling for higher outputs. All resolutions (256, 384, 512) use the same gentle upscaling method for natural results. For best quality at all resolutions, consider ReSwapper256.'
+        },
+        'ReSwapper256ResSelection': {
+            'level': 2,
+            'label': 'ReSwapper Resolution',
+            'options': ['256', '384', '512'],
+            'default': '256',
+            'parentSelection': 'SwapModelSelection',
+            'requiredSelectionValue': 'ReSwapper256',
+            'help': 'Select the output resolution for ReSwapper256. Starts at native 256x256 resolution for optimal quality.'
         },
         'DFMModelSelection': {
             'level': 2,
