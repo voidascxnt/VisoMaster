@@ -67,8 +67,7 @@ def find_target_faces(main_window: 'MainWindow'):
     video_processor = main_window.video_processor
     if video_processor.media_path:
         frame = None
-        media_capture = video_processor.media_capture
-
+        media_capture = video_processor.media_capture        
         if video_processor.file_type=='image':
             frame = misc_helpers.read_image_file(video_processor.media_path)
         elif video_processor.file_type=='video' and media_capture:
@@ -77,6 +76,9 @@ def find_target_faces(main_window: 'MainWindow'):
         elif video_processor.file_type=='webcam' and media_capture:
             ret, frame = misc_helpers.read_frame(media_capture)
             media_capture.set(cv2.CAP_PROP_POS_FRAMES, video_processor.current_frame_number)
+        elif video_processor.file_type=='screen_capture' and media_capture:
+            ret, frame = misc_helpers.read_frame(media_capture)
+            # Note: screen capture doesn't need frame positioning like video files
 
         if frame is not None:
         # Frame must be in RGB format

@@ -59,10 +59,8 @@ class FrameWorker(threading.Thread):
 
             # Display the frame if processing is still active
 
-            pixmap = common_widget_actions.get_pixmap_from_frame(self.main_window, self.frame)
-
-            # Output processed Webcam frame
-            if self.video_processor.file_type=='webcam' and not self.is_single_frame:
+            pixmap = common_widget_actions.get_pixmap_from_frame(self.main_window, self.frame)            # Output processed Webcam frame or Screen Capture frame
+            if (self.video_processor.file_type=='webcam' or self.video_processor.file_type=='screen_capture') and not self.is_single_frame:
                 self.video_processor.webcam_frame_processed_signal.emit(pixmap, self.frame)
 
             #Output Video frame (while playing)
@@ -85,9 +83,19 @@ class FrameWorker(threading.Thread):
         except Exception as e: # pylint: disable=broad-exception-caught
             print(f"Error in FrameWorker: {e}")
             traceback.print_exc()
-    
-    # @misc_helpers.benchmark
+      # @misc_helpers.benchmark
     def process_frame(self):
+        # OPTIMIZATION: Check for screen capture performance mode
+        if (self.video_processor.file_type == 'screen_capture' and 
+            hasattr(self.video_processor, 'screen_capture_performance_mode') and
+            self.video_processor.screen_capture_performance_mode):
+            
+            # Skip frame if performance mode suggests it
+            if hasattr(self.video_processor, 'should_skip_frame_for_performance') and \
+               self.video_processor.should_skip_frame_for_performance():
+                # Return original frame without processing
+                return self.frame[..., ::-1]  # Convert RGB to BGR
+        
         # Load frame into VRAM
         img = torch.from_numpy(self.frame.astype('uint8')).to(self.models_processor.device) #HxWxc
         img = img.permute(2,0,1)#cxHxW
@@ -153,34 +161,33 @@ class FrameWorker(threading.Thread):
 
         compare_mode = self.is_view_face_mask or self.is_view_face_compare
         
-        if det_faces_data:
-            # Loop through target faces to see if they match our found face embeddings
-            for i, fface in enumerate(det_faces_data):
-                    for _, target_face in self.main_window.target_faces.items():
-                        parameters = ParametersDict(self.parameters[target_face.face_id], self.main_window.default_parameters) #Use the parameters of the target face
+        if det_faces_data:            # Loop through target faces to see if they match our found face embeddings
+            for fface in det_faces_data:
+                for _, target_face in self.main_window.target_faces.items():
+                    parameters = ParametersDict(self.parameters[target_face.face_id], self.main_window.default_parameters) #Use the parameters of the target face
 
-                        if self.main_window.swapfacesButton.isChecked() or self.main_window.editFacesButton.isChecked():
-                            sim = self.models_processor.findCosineDistance(fface['embedding'], target_face.get_embedding(control['RecognitionModelSelection'])) # Recognition for comparing
-                            if sim>=parameters['SimilarityThresholdSlider']:
-                                s_e = None
-                                fface['kps_5'] = self.keypoints_adjustments(fface['kps_5'], parameters) #Make keypoints adjustments
-                                arcface_model = self.models_processor.get_arcface_model(parameters['SwapModelSelection'])
-                                dfm_model=parameters['DFMModelSelection']
-                                if self.main_window.swapfacesButton.isChecked():
-                                    if parameters['SwapModelSelection'] != 'DeepFaceLive (DFM)':
-                                        s_e = target_face.assigned_input_embedding.get(arcface_model, None)
-                                    if s_e is not None and np.isnan(s_e).any():
-                                        s_e = None
-                                else:
-                                    dfm_model = None
+                    if self.main_window.swapfacesButton.isChecked() or self.main_window.editFacesButton.isChecked():
+                        sim = self.models_processor.findCosineDistance(fface['embedding'], target_face.get_embedding(control['RecognitionModelSelection'])) # Recognition for comparing
+                        if sim>=parameters['SimilarityThresholdSlider']:
+                            s_e = None
+                            fface['kps_5'] = self.keypoints_adjustments(fface['kps_5'], parameters) #Make keypoints adjustments
+                            arcface_model = self.models_processor.get_arcface_model(parameters['SwapModelSelection'])
+                            dfm_model=parameters['DFMModelSelection']
+                            if self.main_window.swapfacesButton.isChecked():
+                                if parameters['SwapModelSelection'] != 'DeepFaceLive (DFM)':
+                                    s_e = target_face.assigned_input_embedding.get(arcface_model, None)
+                                if s_e is not None and np.isnan(s_e).any():
                                     s_e = None
+                            else:
+                                dfm_model = None
+                                s_e = None
 
-                                # swap_core function is executed even if 'Swap Faces' button is disabled,
-                                # because it also returns the original face and face mask 
-                                img, fface['original_face'], fface['swap_mask'] = self.swap_core(img, fface['kps_5'], s_e=s_e, t_e=target_face.get_embedding(arcface_model), parameters=parameters, control=control, dfm_model=dfm_model)
-                                        # cv2.imwrite('temp_swap_face.png', swapped_face.permute(1,2,0).cpu().numpy())
-                                if self.main_window.editFacesButton.isChecked():
-                                    img = self.swap_edit_face_core(img, fface['kps_all'], parameters, control)
+                            # swap_core function is executed even if 'Swap Faces' button is disabled,
+                            # because it also returns the original face and face mask 
+                            img, fface['original_face'], fface['swap_mask'] = self.swap_core(img, fface['kps_5'], s_e=s_e, t_e=target_face.get_embedding(arcface_model), parameters=parameters, control=control, dfm_model=dfm_model)
+                                    # cv2.imwrite('temp_swap_face.png', swapped_face.permute(1,2,0).cpu().numpy())
+                            if self.main_window.editFacesButton.isChecked():
+                                img = self.swap_edit_face_core(img, fface['kps_all'], parameters, control)
 
         if control['ManualRotationEnableToggle']:
             img = v2.functional.rotate(img, angle=-control['ManualRotationAngleSlider'], interpolation=v2.InterpolationMode.BILINEAR, expand=True)
@@ -197,7 +204,7 @@ class FrameWorker(threading.Thread):
             img = self.get_compare_faces_image(img, det_faces_data, control)
 
         if control['FrameEnhancerEnableToggle'] and not compare_mode:
-            img = self.enhance_core(img, control=control)
+            img = self.enhance_core(img, control)
 
         img = img.permute(1,2,0)
         img = img.cpu().numpy()
@@ -361,7 +368,7 @@ class FrameWorker(threading.Thread):
             M, _ = faceutil.estimate_norm_arcface_template(kps_5, src=dst)
             tform.params[0:2] = M
         return tform
-      
+
     def get_transformed_and_scaled_faces(self, tform, img):
         # Grab 512 face from image and create 256 and 128 copys
         original_face_512 = v2.functional.affine(img, tform.rotation*57.2958, (tform.translation[0], tform.translation[1]) , tform.scale, 0, center = (0,0), interpolation=v2.InterpolationMode.BILINEAR )
@@ -370,9 +377,13 @@ class FrameWorker(threading.Thread):
         original_face_256 = t256(original_face_512)
         original_face_128 = t128(original_face_256)
         return original_face_512, original_face_384, original_face_256, original_face_128
-    
+
     def get_affined_face_dim_and_swapping_latents(self, original_faces: tuple, swapper_model, dfm_model, s_e, t_e, parameters,):
         original_face_512, original_face_384, original_face_256, original_face_128 = original_faces
+        # Initialize default values to prevent undefined variable errors
+        input_face_affined = original_face_256
+        dim = 2
+        latent = []
         if swapper_model == 'Inswapper128':
             self.models_processor.load_inswapper_iss_emap('Inswapper128')
             latent = torch.from_numpy(self.models_processor.calc_inswapper_latent(s_e)).float().to(self.models_processor.device)
@@ -444,35 +455,48 @@ class FrameWorker(threading.Thread):
             dim = 4
         return input_face_affined, dfm_model, dim, latent
     
-    def get_swapped_and_prev_face(self, output, input_face_affined, original_face_512, latent, itex, dim, swapper_model, dfm_model, parameters, ):
+    def get_swapped_and_prev_face(self, output, inputFaceAffined, original_face_512, latent, itex, dim, swapper_model, dfm_model, parameters, ):
         # original_face_512, original_face_384, original_face_256, original_face_128 = original_faces
-        prev_face = input_face_affined.clone()
+        prev_face = inputFaceAffined.clone()
         if swapper_model == 'Inswapper128':
             with torch.no_grad():  # Disabilita il calcolo del gradiente se è solo per inferenza
                 for _ in range(itex):
-                    for j in range(dim):
-                        for i in range(dim):
-                            input_face_disc = input_face_affined[j::dim,i::dim]
-                            input_face_disc = input_face_disc.permute(2, 0, 1)
-                            input_face_disc = torch.unsqueeze(input_face_disc, 0).contiguous()
+                    # OPTIMIZATION: Use single inference instead of 4x tiled inference
+                    # Resize face to 128x128 for single inference
+                    resize_128 = v2.Resize((128, 128), antialias=True)
+                    input_face_128 = resize_128(inputFaceAffined.permute(2, 0, 1))
+                    input_face_128 = torch.unsqueeze(input_face_128, 0).contiguous()
 
-                            swapper_output = torch.empty((1,3,128,128), dtype=torch.float32, device=self.models_processor.device).contiguous()
-                            self.models_processor.run_inswapper(input_face_disc, latent, swapper_output)
+                    # Get tensor from pool or create new one
+                    swapper_output = self.models_processor.get_pooled_tensor((1,3,128,128), torch.float32)
+                    self.models_processor.run_inswapper(input_face_128, latent, swapper_output)
 
-                            swapper_output = torch.squeeze(swapper_output)
-                            swapper_output = swapper_output.permute(1, 2, 0)
-
-                            output[j::dim, i::dim] = swapper_output.clone()
-                    prev_face = input_face_affined.clone()
-                    input_face_affined = output.clone()
+                    swapper_output = torch.squeeze(swapper_output)
+                    swapped_128 = swapper_output.permute(1, 2, 0)
+                    
+                    # Upscale back to original size using optimized upscaling
+                    if hasattr(self.models_processor, 'upscale_with_realesrgan'):
+                        # Use Real-ESRGAN if available for better quality
+                        output = self.models_processor.upscale_with_realesrgan(swapped_128, target_size=inputFaceAffined.shape[:2])
+                    else:
+                        # Fallback to bicubic upscaling
+                        target_height, target_width = inputFaceAffined.shape[:2]
+                        upscale_transform = v2.Resize((target_height, target_width), antialias=True)
+                        output = upscale_transform(swapped_128.permute(2, 0, 1)).permute(1, 2, 0)
+                    
+                    prev_face = inputFaceAffined.clone()
+                    inputFaceAffined = output.clone()
                     output = torch.mul(output, 255)
                     output = torch.clamp(output, 0, 255)
+                    
+                    # Return tensor to pool
+                    self.models_processor.return_pooled_tensor(swapper_output.unsqueeze(0), (1,3,128,128), torch.float32)
 
         elif swapper_model in ('InStyleSwapper256 Version A', 'InStyleSwapper256 Version B', 'InStyleSwapper256 Version C'):
             version = swapper_model[-1] #Version Name
             with torch.no_grad():  # Disabilita il calcolo del gradiente se è solo per inferenza
                 for _ in range(itex):
-                    input_face_disc = input_face_affined.permute(2, 0, 1)
+                    input_face_disc = inputFaceAffined.permute(2, 0, 1)
                     input_face_disc = torch.unsqueeze(input_face_disc, 0).contiguous()
 
                     swapper_output = torch.empty((1,3,256,256), dtype=torch.float32, device=self.models_processor.device).contiguous()
@@ -482,29 +506,29 @@ class FrameWorker(threading.Thread):
                     swapper_output = swapper_output.permute(1, 2, 0)
 
                     output = swapper_output.clone()
-                    prev_face = input_face_affined.clone()
-                    input_face_affined = output.clone()
+                    prev_face = inputFaceAffined.clone()
+                    inputFaceAffined = output.clone()
                     output = torch.mul(output, 255)
                     output = torch.clamp(output, 0, 255)
 
         elif swapper_model == 'SimSwap512':
-            for k in range(itex):
-                input_face_disc = input_face_affined.permute(2, 0, 1)
+            for _ in range(itex):
+                input_face_disc = inputFaceAffined.permute(2, 0, 1)
                 input_face_disc = torch.unsqueeze(input_face_disc, 0).contiguous()
                 swapper_output = torch.empty((1,3,512,512), dtype=torch.float32, device=self.models_processor.device).contiguous()
                 self.models_processor.run_swapper_simswap512(input_face_disc, latent, swapper_output)
                 swapper_output = torch.squeeze(swapper_output)
                 swapper_output = swapper_output.permute(1, 2, 0)
-                prev_face = input_face_affined.clone()
-                input_face_affined = swapper_output.clone()
+                prev_face = inputFaceAffined.clone()
+                inputFaceAffined = swapper_output.clone()
 
                 output = swapper_output.clone()
                 output = torch.mul(output, 255)
                 output = torch.clamp(output, 0, 255)
 
         elif swapper_model == 'GhostFace-v1' or swapper_model == 'GhostFace-v2' or swapper_model == 'GhostFace-v3':
-            for k in range(itex):
-                input_face_disc = torch.mul(input_face_affined, 255.0).permute(2, 0, 1)
+            for _ in range(itex):
+                input_face_disc = torch.mul(inputFaceAffined, 255.0).permute(2, 0, 1)
                 input_face_disc = torch.div(input_face_disc.float(), 127.5)
                 input_face_disc = torch.sub(input_face_disc, 1)
                 #input_face_disc = input_face_disc[[2, 1, 0], :, :] # Inverte i canali da BGR a RGB (assumendo che l'input sia BGR)
@@ -516,16 +540,16 @@ class FrameWorker(threading.Thread):
                 swapper_output = torch.mul(swapper_output, 127.5)
                 swapper_output = torch.add(swapper_output, 127.5)
                 #swapper_output = swapper_output[:, :, [2, 1, 0]] # Inverte i canali da RGB a BGR (assumendo che l'input sia RGB)
-                prev_face = input_face_affined.clone()
-                input_face_affined = swapper_output.clone()
-                input_face_affined = torch.div(input_face_affined, 255)
+                prev_face = inputFaceAffined.clone()
+                inputFaceAffined = swapper_output.clone()
+                inputFaceAffined = torch.div(inputFaceAffined, 255)
 
                 output = swapper_output.clone()
                 output = torch.clamp(output, 0, 255)
 
         elif swapper_model == 'CSCS':
-            for k in range(itex):
-                input_face_disc = input_face_affined.permute(2, 0, 1)
+            for _ in range(itex):
+                input_face_disc = inputFaceAffined.permute(2, 0, 1)
                 input_face_disc = v2.functional.normalize(input_face_disc, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=False)
                 input_face_disc = torch.unsqueeze(input_face_disc, 0).contiguous()
                 swapper_output = torch.empty((1,3,256,256), dtype=torch.float32, device=self.models_processor.device).contiguous()
@@ -533,8 +557,8 @@ class FrameWorker(threading.Thread):
                 swapper_output = torch.squeeze(swapper_output)
                 swapper_output = torch.add(torch.mul(swapper_output, 0.5), 0.5)
                 swapper_output = swapper_output.permute(1, 2, 0)
-                prev_face = input_face_affined.clone()
-                input_face_affined = swapper_output.clone()
+                prev_face = inputFaceAffined.clone()
+                inputFaceAffined = swapper_output.clone()
 
                 output = swapper_output.clone()
                 output = torch.mul(output, 255)
@@ -542,8 +566,8 @@ class FrameWorker(threading.Thread):
         
         elif swapper_model == 'DeepFaceLive (DFM)' and dfm_model:
             out_celeb, _, _ = dfm_model.convert(original_face_512, parameters['DFMAmpMorphSlider']/100, rct=parameters['DFMRCTColorToggle'])
-            prev_face = input_face_affined.clone()
-            input_face_affined = out_celeb.clone()
+            prev_face = inputFaceAffined.clone()
+            inputFaceAffined = out_celeb.clone()
             output = out_celeb.clone()
 
         output = output.permute(2, 0, 1)
@@ -636,14 +660,19 @@ class FrameWorker(threading.Thread):
         
         # Expression Restorer
         if parameters['FaceExpressionEnableToggle']:
-            swap = self.apply_face_expression_restorer(original_face_512, swap, parameters)
-
-        # Restorer
+            swap = self.apply_face_expression_restorer(original_face_512, swap, parameters)        # Restorer
         if parameters["FaceRestorerEnableToggle"]:
-            swap = self.models_processor.apply_facerestorer(swap, parameters['FaceRestorerDetTypeSelection'], parameters['FaceRestorerTypeSelection'], parameters["FaceRestorerBlendSlider"], parameters['FaceFidelityWeightDecimalSlider'], control['DetectorScoreSlider'])
+            # OPTIMIZATION: Use lighter restoration in performance mode
+            if (self.models_processor.performance_mode_active and 
+                self.video_processor.file_type == 'screen_capture'):
+                # Use faster, lighter restoration model
+                restorer_type = self.get_performance_restorer_type(parameters['FaceRestorerTypeSelection'])
+                swap = self.models_processor.apply_facerestorer(swap, parameters['FaceRestorerDetTypeSelection'], restorer_type, parameters["FaceRestorerBlendSlider"], parameters['FaceFidelityWeightDecimalSlider'], control['DetectorScoreSlider'])
+            else:
+                swap = self.models_processor.apply_facerestorer(swap, parameters['FaceRestorerDetTypeSelection'], parameters['FaceRestorerTypeSelection'], parameters["FaceRestorerBlendSlider"], parameters['FaceFidelityWeightDecimalSlider'], control['DetectorScoreSlider'])
 
-        # Restorer2
-        if parameters["FaceRestorerEnable2Toggle"]:
+        # Restorer2 - Skip second restoration in performance mode
+        if parameters["FaceRestorerEnable2Toggle"] and not self.models_processor.performance_mode_active:
             swap = self.models_processor.apply_facerestorer(swap, parameters['FaceRestorerDetType2Selection'], parameters['FaceRestorerType2Selection'], parameters["FaceRestorerBlend2Slider"], parameters['FaceFidelityWeight2DecimalSlider'], control['DetectorScoreSlider'])
 
         # Occluder
@@ -978,6 +1007,20 @@ class FrameWorker(threading.Thread):
                 img = blended_img.type(torch.uint8)
 
         return img
+
+    def get_performance_restorer_type(self, original_restorer_type):
+        """Get a lighter, faster restoration model for performance mode"""
+        # Map heavy restoration models to lighter alternatives
+        performance_mapping = {
+            'GPEN-BFR-1024': 'GPEN-BFR-256',  # Use smaller GPEN
+            'GPEN-BFR-2048': 'GPEN-BFR-512',
+            'GPEN-BFR-512': 'GPEN-BFR-256',
+            'RestoreFormerPlusPlus': 'GFPGANv1.4',  # Use GFPGAN instead
+            'VQFRv2.fp16': 'GFPGANv1.4',
+            'codeformer_fp16': 'GFPGANv1.4',
+        }
+        
+        return performance_mapping.get(original_restorer_type, original_restorer_type)
 
     def apply_face_expression_restorer(self, driving, target, parameters):
         """ Apply face expression restorer from driving to target.

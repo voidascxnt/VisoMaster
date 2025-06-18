@@ -191,8 +191,8 @@ class TargetMediaCardButton(CardButton):
             main_window.video_processor.media_capture = media_capture
             self.media_capture = media_capture
             main_window.video_processor.fps = media_capture.get(cv2.CAP_PROP_FPS)
-            main_window.video_processor.max_frame_number = max_frames_number
-
+            main_window.video_processor.max_frame_number = max_frames_number        
+        
         elif self.file_type == 'image':
             frame = misc_helpers.read_image_file(self.media_path)
             max_frames_number = 0  # For an image, there is only one "frame"
@@ -207,8 +207,30 @@ class TargetMediaCardButton(CardButton):
             max_frames_number = 999999
             _, frame = misc_helpers.read_frame(media_capture)
             main_window.video_processor.media_capture = media_capture
-            self.media_capture = media_capture
+            self.media_capture = media_capture            
             main_window.video_processor.fps = media_capture.get(cv2.CAP_PROP_FPS)
+            main_window.video_processor.max_frame_number = max_frames_number
+
+        elif self.file_type == 'screen_capture':
+            # Create screen capture wrapper that behaves like cv2.VideoCapture
+            from app.processors.screen_capture import ScreenCapture, ScreenCaptureWrapper
+            
+            # Get screen capture settings
+            settings = main_window.control
+            x = settings.get('ScreenCaptureXSlider', 0)
+            y = settings.get('ScreenCaptureYSlider', 0)
+            width = settings.get('ScreenCaptureWidthSlider', 1920)
+            height = settings.get('ScreenCaptureHeightSlider', 1080)
+            fps = settings.get('ScreenCaptureFPSSlider', 30)
+            
+            # Create wrapper for compatibility with cv2.VideoCapture interface
+            media_capture = ScreenCaptureWrapper(x, y, width, height)
+            media_capture.open()  # Start the capture
+            max_frames_number = 999999  # Screen capture is continuous like webcam
+            _, frame = misc_helpers.read_frame(media_capture)
+            main_window.video_processor.media_capture = media_capture
+            self.media_capture = media_capture
+            main_window.video_processor.fps = fps
             main_window.video_processor.max_frame_number = max_frames_number
 
         if frame is not None:

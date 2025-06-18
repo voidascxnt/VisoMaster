@@ -22,6 +22,10 @@ def add_media_thumbnail_to_target_videos_list(main_window: 'MainWindow', media_p
 def add_webcam_thumbnail_to_target_videos_list(main_window: 'MainWindow', media_path, pixmap, file_type, media_id, webcam_index, webcam_backend):
     add_media_thumbnail_button(main_window, widget_components.TargetMediaCardButton, main_window.targetVideosList, main_window.target_videos, pixmap, media_path=media_path, file_type=file_type, media_id=media_id, is_webcam=True, webcam_index=webcam_index, webcam_backend=webcam_backend)
 
+@QtCore.Slot(str, QtGui.QPixmap)
+def add_screen_capture_thumbnail_to_target_videos_list(main_window: 'MainWindow', media_path, pixmap, file_type, media_id):
+    add_media_thumbnail_button(main_window, widget_components.TargetMediaCardButton, main_window.targetVideosList, main_window.target_videos, pixmap, media_path=media_path, file_type=file_type, media_id=media_id)
+
 @QtCore.Slot()
 def add_media_thumbnail_to_target_faces_list(main_window: 'MainWindow', cropped_face, embedding_store, pixmap, face_id):
     add_media_thumbnail_button(main_window, widget_components.TargetFaceCardButton, main_window.targetFacesList, main_window.target_faces, pixmap, cropped_face=cropped_face, embedding_store=embedding_store, face_id=face_id )
@@ -242,3 +246,30 @@ def select_output_media_folder(main_window: 'MainWindow'):
     if folder_name:
         main_window.outputFolderLineEdit.setText(folder_name)
         common_widget_actions.create_control(main_window, 'OutputMediaFolder', folder_name)
+
+
+def add_screen_capture_to_target_videos(main_window, x, y, width, height):
+    """Add screen capture to target videos list"""
+    import uuid
+    from app.processors.screen_capture import ScreenCapture
+    
+    # Generate unique media ID
+    media_id = str(uuid.uuid1().int)
+    media_path = f'Screen Capture {x},{y} {width}x{height}'
+    
+    try:
+        # Capture a frame for thumbnail
+        screen_capture = ScreenCapture()
+        screen_capture.set_region(x, y, width, height)
+        screen_capture.start_capture()
+        frame = screen_capture.capture_frame()
+        screen_capture.stop_capture()
+        
+        if frame is not None:
+            pixmap = common_widget_actions.get_pixmap_from_frame(main_window, frame)
+            add_screen_capture_thumbnail_to_target_videos_list(main_window, media_path, pixmap, 'screen_capture', media_id)
+        else:
+            print("Failed to capture screen frame for thumbnail")
+            
+    except Exception as e:
+        print(f"Error adding screen capture: {e}")
